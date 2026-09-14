@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Paper viewer - JEE Paper Archive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body class="viewer-body">
+
+<header class="viewer-toolbar">
+  <a href="#" class="btn-back" id="back-link" aria-label="Back to archive">&larr;</a>
+  <span class="viewer-title" id="doc-title-display">Loading&hellip;</span>
+  <div class="viewer-controls">
+    <button id="zoom-out" type="button" aria-label="Zoom out">&minus;</button>
+    <span class="zoom-level" id="zoom-level">100%</span>
+    <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+    <span class="control-divider"></span>
+    <input id="page-input" type="number" min="1" value="1" inputmode="numeric" aria-label="Page number">
+    <span class="page-of">of <span id="page-count">&ndash;</span></span>
+  </div>
+</header>
+
+<main id="viewer-container" class="viewer-container">
+  <p id="viewer-status" class="viewer-status">Loading document&hellip;</p>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+(function () {
+  // Back goes to wherever the visitor came from (an archive page), falling
+  // back to the home page if this was opened directly.
+  document.getElementById('back-link').addEventListener('click', function (e) {
+    e.preventDefault();
+    if (window.history.length > 1) history.back();
+    else window.location.href = '/';
+  });
+
+  var params = new URLSearchParams(window.location.search);
+  var fileUrl = params.get('file');
+  var rawTitle = params.get('title') || 'Untitled paper';
+  var title = rawTitle.replace(/-/g, ' ');
+
+  document.title = title + ' \u2013 JEE Paper Archive';
+  document.getElementById('doc-title-display').textContent = title;
+
+  var container = document.getElementById('viewer-container');
+  var status = document.getElementById('viewer-status');
+  var pageInput = document.getElementById('page-input');
+  var pageCountEl = document.getElementById('page-count');
+  var zoomLevelEl = document.getElementById('zoom-level');
+  var zoomInBtn = document.getElementById('zoom-in');
+  var zoomOutBtn = document.getElementById('zoom-out');
+
+  var pdfDoc = null;
+  var baseScale = 1.4;   // PDF.js scale factor when zoomPercent is 100
+  var zoomPercent = 100; // what the toolbar shows
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function currentScale() { return baseScale * (zoomPercent / 100); }
+  function updateZoomLabel() { zoomLevelEl.textContent = zoomPercent + '%'; }
+
+  if (!fileUrl) {
+    status.textContent = 'No file was specified. Open a paper from the archive instead of this page directly.';
+  } else {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    pdfjsLib.getDocument(fileUrl).promise.then(function (doc) {
+      pdfDoc = doc;
+      pageCountEl.textContent = doc.numPages;
+      pageInput.max = doc.numPages;
+      status.remove();
+      renderAllPages();
+    }).catch(function (err) {
+      status.textContent = 'Could not load this PDF. Check that the file exists at ' + fileUrl + '.';
+      console.error(err);
+    });
+  }
+
+  function renderAllPages() {
+    container.innerHTML = '';
+    for (var num = 1; num <= pdfDoc.numPages; num++) {
+      var pageWrap = document.createElement('div');
+      pageWrap.className = 'pdf-page';
+      pageWrap.dataset.pageNumber = num;
+      var canvas = document.createElement('canvas');
+      pageWrap.appendChild(canvas);
+      container.appendChild(pageWrap);
+      renderPage(num, canvas);
+    }
+  }
+
+  function renderPage(num, canvas) {
+    pdfDoc.getPage(num).then(function (page) {
+      var viewport = page.getViewport({ scale: currentScale() });
+      // Render at device pixel ratio so text stays crisp on high-DPI / tablet screens.
+      var outputScale = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(viewport.width * outputScale);
+      canvas.height = Math.floor(viewport.height * outputScale);
+      canvas.style.width = Math.floor(viewport.width) + 'px';
+      canvas.style.height = Math.floor(viewport.height) + 'px';
+      var ctx = canvas.getContext('2d');
+      var renderContext = { canvasContext: ctx, viewport: viewport };
+      if (outputScale !== 1) {
+        renderContext.transform = [outputScale, 0, 0, outputScale, 0, 0];
+      }
+      page.render(renderContext);
+    });
+  }
+
+  zoomInBtn.addEventListener('click', function () {
+    zoomPercent = Math.min(zoomPercent + 15, 250);
+    updateZoomLabel();
+    if (pdfDoc) renderAllPages();
+  });
+
+  zoomOutBtn.addEventListener('click', function () {
+    zoomPercent = Math.max(zoomPercent - 15, 50);
+    updateZoomLabel();
+    if (pdfDoc) renderAllPages();
+  });
+
+  // Page finder: type a page number, tab away or hit Go/Enter to jump to it.
+  pageInput.addEventListener('change', function () {
+    var target = parseInt(pageInput.value, 10);
+    if (!pdfDoc || isNaN(target)) return;
+    var clamped = Math.max(1, Math.min(target, pdfDoc.numPages));
+    pageInput.value = clamped;
+    var el = container.querySelector('[data-page-number="' + clamped + '"]');
+    if (el) el.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+  });
+
+  // Keep the page indicator in sync while scrolling through the document.
+  var scrollTimeout;
+  window.addEventListener('scroll', function () {
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(updateCurrentPageFromScroll, 100);
+  });
+
+  function updateCurrentPageFromScroll() {
+    if (!pdfDoc) return;
+    var pages = container.querySelectorAll('.pdf-page');
+    var threshold = 100; // roughly the toolbar height
+    var current = 1;
+    for (var i = 0; i < pages.length; i++) {
+      var rect = pages[i].getBoundingClientRect();
+      if (rect.top <= threshold) {
+        current = parseInt(pages[i].dataset.pageNumber, 10);
+      }
+    }
+    pageInput.value = current;
+  }
+
+  updateZoomLabel();
+})();
+</script>
+</body>
+</html>
