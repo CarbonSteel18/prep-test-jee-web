@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resolve Drive links - JEE Paper Archive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  .tool { max-width: 900px; margin: 0 auto; padding: 8px 24px 64px; }
+  .tool h1 { font-size: 1.6rem; margin: 0 0 8px; }
+  .tool p.note { color: var(--ink-soft); max-width: 65ch; }
+  .tool p.note code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    background: var(--accent-soft);
+    padding: 1px 5px;
+    border-radius: var(--radius);
+  }
+  textarea {
+    width: 100%;
+    min-height: 160px;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    padding: 12px;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--ink);
+  }
+  .tool-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 12px 0 20px; }
+  .tool button {
+    font-family: var(--font-sans);
+    font-size: 0.95rem;
+    font-weight: 500;
+    padding: 10px 18px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .tool button:disabled { opacity: 0.5; cursor: default; }
+  .tool button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  #status { color: var(--ink-soft); font-size: 0.9rem; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--rule); font-size: 0.9rem; }
+  th { font-family: var(--font-mono); font-weight: 500; color: var(--ink-soft); font-size: 0.8rem; }
+  .row-error { color: #A33; }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <a class="site-title" href="/">JEE Paper Archive</a>
+</header>
+
+<main class="tool">
+  <a class="back-link" href="/">&larr; Home</a>
+  <h1>Resolve Drive links</h1>
+  <p class="note">
+    Paste hopper links below, one per line. This looks up the real Google
+    Drive page each one points to &mdash; it doesn't download or upload
+    anything for you. Runs in batches of 20 automatically. This page isn't
+    linked from anywhere else on the site; delete it and
+    <code>api/resolve-links.py</code> once you're done with it.
+  </p>
+
+  <textarea id="links-input" placeholder="https://links.mathongo.com/CemG&#10;https://links.mathongo.com/AbCd&#10;..."></textarea>
+
+  <div class="tool-actions">
+    <button id="resolve-btn" type="button">Resolve links</button>
+    <button id="copy-btn" type="button" class="secondary">Copy results as text</button>
+    <span id="status"></span>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>Title</th><th>Drive link</th></tr>
+    </thead>
+    <tbody id="results-body"></tbody>
+  </table>
+</main>
+
+<script>
+(function () {
+  var textarea = document.getElementById('links-input');
+  var button = document.getElementById('resolve-btn');
+  var copyBtn = document.getElementById('copy-btn');
+  var status = document.getElementById('status');
+  var tbody = document.getElementById('results-body');
+
+  var BATCH_SIZE = 20;
+  var allResults = [];
+
+  button.addEventListener('click', async function () {
+    var links = textarea.value.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+    if (!links.length) return;
+
+    button.disabled = true;
+    tbody.innerHTML = '';
+    allResults = [];
+
+    var batches = [];
+    for (var i = 0; i < links.length; i += BATCH_SIZE) {
+      batches.push(links.slice(i, i + BATCH_SIZE));
+    }
+
+    for (var b = 0; b < batches.length; b++) {
+      status.textContent = 'Resolving batch ' + (b + 1) + ' of ' + batches.length + '\u2026';
+      try {
+        var res = await fetch('/api/resolve-links', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ links: batches[b] })
+        });
+        var data = await res.json();
+        data.results.forEach(addRow);
+      } catch (err) {
+        batches[b].forEach(function (link) {
+          addRow({ hopper: link, ok: false, error: 'Request failed' });
+        });
+      }
+    }
+
+    var okCount = allResults.filter(function (r) { return r.ok; }).length;
+    status.textContent = 'Done \u2014 ' + okCount + ' of ' + links.length + ' resolved.';
+    button.disabled = false;
+  });
+
+  function addRow(r) {
+    allResults.push(r);
+    var tr = document.createElement('tr');
+    if (!r.ok) {
+      var errCell = document.createElement('td');
+      errCell.colSpan = 2;
+      errCell.className = 'row-error';
+      errCell.textContent = 'Failed: ' + r.hopper;
+      tr.appendChild(errCell);
+    } else {
+      var titleCell = document.createElement('td');
+      titleCell.textContent = r.title || '(no title found)';
+
+      var linkCell = document.createElement('td');
+      var a = document.createElement('a');
+      a.href = r.resolved;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = 'Drive link';
+      linkCell.appendChild(a);
+
+      tr.appendChild(titleCell);
+      tr.appendChild(linkCell);
+    }
+    tbody.appendChild(tr);
+  }
+
+  copyBtn.addEventListener('click', function () {
+    var lines = allResults.filter(function (r) { return r.ok; }).map(function (r) {
+      return (r.title || 'Untitled') + ' | ' + r.resolved;
+    });
+    navigator.clipboard.writeText(lines.join('\n')).then(function () {
+      var original = copyBtn.textContent;
+      copyBtn.textContent = 'Copied!';
+      setTimeout(function () { copyBtn.textContent = original; }, 1500);
+    });
+  });
+})();
+</script>
+</body>
+</html>
