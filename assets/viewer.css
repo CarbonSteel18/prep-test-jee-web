@@ -1,0 +1,32 @@
+/* Viewer-specific styles — loaded after styles.css */
+
+.layout { display: grid; grid-template-columns: 320px 1fr; height: 100vh; margin: 0; }
+.sidebar { overflow-y: auto; padding: 1rem; border-right: 1px solid #ddd; }
+.sidebar nav details { margin: .25rem 0 .25rem 0; }
+.sidebar nav summary { cursor: pointer; padding: .25rem; font-weight: 600; }
+.sidebar nav summary::marker { color: #888; }
+.sidebar nav summary + summary,
+.sidebar nav details details summary { font-weight: 500; padding-left: 1rem; }
+.paper-btn {
+  display: block; width: 100%; text-align: left;
+  background: none; border: 0; padding: .3rem .5rem .3rem 1.5rem;
+  cursor: pointer; border-radius: 4px; font: inherit;
+}
+.paper-btn:hover { background: #f0f4ff; }
+.viewer { display: flex; flex-direction: column; }
+.viewer-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: .75rem 1rem; border-bottom: 1px solid #ddd;
+}
+.viewer-head h2 { margin: 0; font-size: 1rem; }
+#pdf-frame { flex: 1; width: 100%; border: 0; }
+.btn {
+  padding: .4rem .8rem; background: #2563eb; color: #fff;
+  text-decoration: none; border-radius: 6px; font-size: .9rem;
+}
+.error { color: #b91c1c; padding: 1rem; }
+
+@media (max-width: 720px) {
+  .layout { grid-template-columns: 1fr; }
+  .sidebar { max-height: 45vh; border-right: 0; border-bottom: 1px solid #ddd; }
+}
