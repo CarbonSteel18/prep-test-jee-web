@@ -7,9 +7,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 TITLE_RE = re.compile(r'<title>(.*?)</title>', re.IGNORECASE | re.DOTALL)
 FILE_ID_RE = re.compile(r'/file/d/([a-zA-Z0-9_-]+)')
 
-# Per-request cap: keeps a batch comfortably inside Vercel's Hobby-plan
-# 10-second function limit even if a few links are slow to respond.
-MAX_LINKS_PER_REQUEST = 20
+# Kept deliberately small and low-concurrency: a burst of many simultaneous
+# requests reads as a scraping attack to MathonGo's link service and gets
+# throttled. A few at a time, comfortably inside Vercel's Hobby-plan
+# 10-second function limit, is far more reliable even though it's slower.
+MAX_LINKS_PER_REQUEST = 6
+MAX_CONCURRENCY = 3
 PER_LINK_TIMEOUT_SECONDS = 4
 
 
@@ -54,11 +57,11 @@ class handler(BaseHTTPRequestHandler):
 
         results = []
         if links:
-            with ThreadPoolExecutor(max_workers=len(links)) as pool:
+            workers = min(MAX_CONCURRENCY, len(links))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
                 futures = {pool.submit(resolve_one, u): u for u in links}
                 for future in as_completed(futures):
                     results.append(future.result())
-            # Restore the order the links were submitted in.
             order = {u: i for i, u in enumerate(links)}
             results.sort(key=lambda r: order.get(r['hopper'], 0))
 
