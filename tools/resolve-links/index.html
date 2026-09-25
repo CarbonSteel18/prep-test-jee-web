@@ -63,15 +63,17 @@
   <p class="note">
     Paste hopper links below, one per line. This looks up the real Google
     Drive page each one points to &mdash; it doesn't download or upload
-    anything for you. Runs in batches of 20 automatically. This page isn't
-    linked from anywhere else on the site; delete it and
-    <code>api/resolve-links.py</code> once you're done with it.
+    anything for you. Runs a few at a time, deliberately slowly, so it
+    doesn't get rate-limited. This page isn't linked from anywhere else on
+    the site; delete it and <code>api/resolve-links.py</code> once you're
+    done with it.
   </p>
 
   <textarea id="links-input" placeholder="https://links.mathongo.com/CemG&#10;https://links.mathongo.com/AbCd&#10;..."></textarea>
 
   <div class="tool-actions">
     <button id="resolve-btn" type="button">Resolve links</button>
+    <button id="retry-btn" type="button" class="secondary" style="display:none">Retry failed</button>
     <button id="copy-btn" type="button" class="secondary">Copy results as text</button>
     <span id="status"></span>
   </div>
@@ -88,26 +90,25 @@
 (function () {
   var textarea = document.getElementById('links-input');
   var button = document.getElementById('resolve-btn');
+  var retryBtn = document.getElementById('retry-btn');
   var copyBtn = document.getElementById('copy-btn');
   var status = document.getElementById('status');
   var tbody = document.getElementById('results-body');
 
-  var BATCH_SIZE = 20;
+  var BATCH_SIZE = 6;
+  var BATCH_DELAY_MS = 400;
+  var totalLinks = 0;
   var allResults = [];
+  var failedLinks = [];
+  var rowByLink = {};
 
-  button.addEventListener('click', async function () {
-    var links = textarea.value.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
-    if (!links.length) return;
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
-    button.disabled = true;
-    tbody.innerHTML = '';
-    allResults = [];
-
+  async function runBatches(links) {
     var batches = [];
     for (var i = 0; i < links.length; i += BATCH_SIZE) {
       batches.push(links.slice(i, i + BATCH_SIZE));
     }
-
     for (var b = 0; b < batches.length; b++) {
       status.textContent = 'Resolving batch ' + (b + 1) + ' of ' + batches.length + '\u2026';
       try {
@@ -117,22 +118,35 @@
           body: JSON.stringify({ links: batches[b] })
         });
         var data = await res.json();
-        data.results.forEach(addRow);
+        data.results.forEach(handleResult);
       } catch (err) {
         batches[b].forEach(function (link) {
-          addRow({ hopper: link, ok: false, error: 'Request failed' });
+          handleResult({ hopper: link, ok: false, error: 'Request failed' });
         });
       }
+      if (b < batches.length - 1) await sleep(BATCH_DELAY_MS);
     }
+  }
 
-    var okCount = allResults.filter(function (r) { return r.ok; }).length;
-    status.textContent = 'Done \u2014 ' + okCount + ' of ' + links.length + ' resolved.';
-    button.disabled = false;
-  });
+  function handleResult(r) {
+    failedLinks = failedLinks.filter(function (l) { return l !== r.hopper; });
+    allResults = allResults.filter(function (x) { return x.hopper !== r.hopper; });
+    if (r.ok) {
+      allResults.push(r);
+    } else {
+      failedLinks.push(r.hopper);
+    }
+    renderRow(r);
+  }
 
-  function addRow(r) {
-    allResults.push(r);
-    var tr = document.createElement('tr');
+  function renderRow(r) {
+    var tr = rowByLink[r.hopper];
+    if (!tr) {
+      tr = document.createElement('tr');
+      rowByLink[r.hopper] = tr;
+      tbody.appendChild(tr);
+    }
+    tr.innerHTML = '';
     if (!r.ok) {
       var errCell = document.createElement('td');
       errCell.colSpan = 2;
@@ -142,7 +156,6 @@
     } else {
       var titleCell = document.createElement('td');
       titleCell.textContent = r.title || '(no title found)';
-
       var linkCell = document.createElement('td');
       var a = document.createElement('a');
       a.href = r.resolved;
@@ -150,15 +163,47 @@
       a.rel = 'noopener';
       a.textContent = 'Drive link';
       linkCell.appendChild(a);
-
       tr.appendChild(titleCell);
       tr.appendChild(linkCell);
     }
-    tbody.appendChild(tr);
   }
 
+  function finish() {
+    status.textContent = 'Done \u2014 ' + allResults.length + ' of ' + totalLinks + ' resolved.';
+    retryBtn.style.display = failedLinks.length ? 'inline-block' : 'none';
+    button.disabled = false;
+    retryBtn.disabled = false;
+  }
+
+  button.addEventListener('click', async function () {
+    var links = textarea.value.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+    if (!links.length) return;
+
+    totalLinks = links.length;
+    button.disabled = true;
+    retryBtn.disabled = true;
+    retryBtn.style.display = 'none';
+    tbody.innerHTML = '';
+    allResults = [];
+    failedLinks = [];
+    rowByLink = {};
+
+    await runBatches(links);
+    finish();
+  });
+
+  retryBtn.addEventListener('click', async function () {
+    if (!failedLinks.length) return;
+    var toRetry = failedLinks.slice();
+    button.disabled = true;
+    retryBtn.disabled = true;
+
+    await runBatches(toRetry);
+    finish();
+  });
+
   copyBtn.addEventListener('click', function () {
-    var lines = allResults.filter(function (r) { return r.ok; }).map(function (r) {
+    var lines = allResults.map(function (r) {
       return (r.title || 'Untitled') + ' | ' + r.resolved;
     });
     navigator.clipboard.writeText(lines.join('\n')).then(function () {
