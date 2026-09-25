@@ -1,36 +1,29 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>JEE Main - JEE Paper Archive</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JEE Main — Previous Year Papers</title>
+  <link rel="stylesheet" href="../assets/styles.css" />
 </head>
 <body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1>JEE Main</h1>
+      <input id="search" type="search" placeholder="Search date or year…" />
+      <nav id="tree"></nav>
+    </aside>
 
-<header class="site-header">
-  <a class="site-title" href="/">JEE Paper Archive</a>
-</header>
+    <main class="viewer">
+      <header class="viewer-head">
+        <h2 id="paper-title">Select a paper</h2>
+        <a id="dl-btn" class="btn" href="#" target="_blank" rel="noopener" hidden>Download</a>
+      </header>
+      <iframe id="pdf-frame" allow="autoplay" loading="lazy"
+              src="about:blank" title="Paper preview"></iframe>
+    </main>
+  </div>
 
-<main class="archive">
-  <a class="back-link" href="/">&larr; All exams</a>
-  <h1>JEE Main</h1>
-
-<section class="year-group">
-  <h2 class="year">2002</h2>
-  <ul class="paper-list">
-    <li class="paper-item">
-      <a href="/viewer/?file=/papers/mains/2002.pdf&title=JEE-Main-2002">
-        <span class="paper-date">2002</span>
-        <span class="paper-shift">Test</span>
-      </a>
-    </li>
-  </ul>
-</section>
-</main>
-
+  <script src="./app.js"></script>
 </body>
 </html>
