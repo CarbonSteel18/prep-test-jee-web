@@ -67,7 +67,7 @@ function loadPaper(year, session, p) {
 
 searchEl.addEventListener('input', e => render(e.target.value));
 
-fetch('../data/papers.json')
+fetch('/data/papers.json')
   .then(r => r.json())
   .then(json => {
     DATA = json;
